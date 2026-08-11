@@ -21,4 +21,10 @@ public class OrderController {
 
         return "Order Service is running";
     }
+
+    @DeleteMapping("/{id}")
+    public String cancelOrder(@PathVariable Long id) {
+
+        return "Order " + id + " cancelled successfully";
+    }
 }
