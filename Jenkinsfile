@@ -3,147 +3,141 @@ pipeline {
     agent any
 
     environment {
-
-        IMAGE_NAME = "order-service"
-
+        DOCKER_IMAGE = "umanikanta/order-service"
         IMAGE_TAG = "develop-${BUILD_NUMBER}"
-
     }
 
     stages {
 
         stage('Checkout') {
-
             steps {
-
+                echo 'Checking out source code'
                 checkout scm
-
             }
         }
 
         stage('Build') {
-
             steps {
-
                 echo 'Building application'
-
                 sh 'mvn clean package -DskipTests'
-
             }
         }
 
         stage('Unit Tests') {
-
             steps {
-
                 echo 'Running unit tests'
-
                 sh 'mvn test'
-
             }
         }
 
         stage('Code Quality') {
-
             steps {
-
                 echo 'Running code quality analysis'
 
-                // SonarQube command would go here
+                // SonarQube command goes here
             }
         }
 
         stage('Docker Build') {
-
             steps {
-
-                echo 'Building Docker image'
+                echo "Building Docker image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
 
                 sh """
                     docker build \
-                    -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                    -t ${DOCKER_IMAGE}:${IMAGE_TAG} .
                 """
             }
         }
 
         stage('Security Scan') {
-
             steps {
-
-                echo 'Running security scan'
+                echo "Running security scan: ${DOCKER_IMAGE}:${IMAGE_TAG}"
 
                 // Example:
-                // trivy image ${IMAGE_NAME}:${IMAGE_TAG}
+                // sh "trivy image ${DOCKER_IMAGE}:${IMAGE_TAG}"
             }
         }
 
         stage('Docker Push') {
-                    steps {
-                        echo "Pushing Docker image"
 
-                        withCredentials([
-                            usernamePassword(
-                                credentialsId: 'dockerhub-credentials',
-                                usernameVariable: 'DOCKER_USERNAME',
-                                passwordVariable: 'DOCKER_PASSWORD'
-                            )
-                        ]) {
+            when {
+                branch 'develop'
+            }
 
-                            sh '''
-                                echo "$DOCKER_PASSWORD" | docker login \
-                                    -u "$DOCKER_USERNAME" \
-                                    --password-stdin
+            steps {
 
-                                docker push ${IMAGE_NAME}:${IMAGE_TAG}
+                echo "Pushing Docker image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
 
-                                docker logout
-                            '''
-                        }
-                    }
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKER_USERNAME',
+                        passwordVariable: 'DOCKER_PASSWORD'
+                    )
+                ]) {
+
+                    sh '''
+                        echo "$DOCKER_PASSWORD" | docker login \
+                            -u "$DOCKER_USERNAME" \
+                            --password-stdin
+
+                        docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
+
+                        docker logout
+                    '''
                 }
+            }
+        }
 
-                stage('Deploy to DEV') {
+        stage('Deploy to DEV') {
 
-                    steps {
+            when {
+                branch 'develop'
+            }
 
-                        sh '''
-                            kubectl -n development set image deployment/order-service \
-                              order-service=${IMAGE_NAME}:${IMAGE_TAG}
-                        '''
+            steps {
 
-                        sh '''
-                            kubectl -n development rollout status \
-                              deployment/order-service \
-                              --timeout=120s
-                        '''
-                    }
-                }
+                echo "Deploying ${DOCKER_IMAGE}:${IMAGE_TAG} to DEV"
 
-                stage('Smoke Test') {
+                sh """
+                    kubectl -n development set image deployment/order-service \
+                        order-service=${DOCKER_IMAGE}:${IMAGE_TAG}
+                """
 
-                    steps {
+                sh """
+                    kubectl -n development rollout status \
+                        deployment/order-service \
+                        --timeout=120s
+                """
+            }
+        }
 
-                        sh '''
-                            kubectl get pods -n development
-                            kubectl get svc -n development
-                        '''
-                    }
-                }
+        stage('Smoke Test') {
 
+            when {
+                branch 'develop'
+            }
+
+            steps {
+
+                echo 'Running DEV smoke test'
+
+                sh '''
+                    kubectl get pods -n development
+                    kubectl get svc -n development
+                '''
+            }
+        }
     }
 
     post {
 
         success {
-
-            echo 'Feature branch CI pipeline SUCCESS'
-
+            echo "CI/CD pipeline SUCCESS - Branch: ${BRANCH_NAME}"
         }
 
         failure {
-
-            echo 'Feature branch CI pipeline FAILED'
-
+            echo "CI/CD pipeline FAILED - Branch: ${BRANCH_NAME}"
         }
     }
 }
