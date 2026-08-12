@@ -19,7 +19,7 @@ public class OrderController {
     @GetMapping("/health")
     public String health() {
 
-        return "Order Service is running";
+        return "Order Service is running successfully";
     }
 
     @DeleteMapping("/{id}")
