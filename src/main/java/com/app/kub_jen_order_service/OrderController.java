@@ -22,6 +22,12 @@ public class OrderController {
         return "Order Service is running successfully";
     }
 
+    @GetMapping("/latest")
+    public String newChange() {
+        return "develop with 1";
+    }
+
+
     @DeleteMapping("/{id}")
     public String cancelOrder(@PathVariable Long id) {
 
