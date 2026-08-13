@@ -19,6 +19,18 @@ public class OrderController {
     @GetMapping("/health")
     public String health() {
 
-        return "Order Service is running";
+        return "Order Service is running successfully";
+    }
+
+    @GetMapping("/latest")
+    public String newChange() {
+        return "develop with 1";
+    }
+
+
+    @DeleteMapping("/{id}")
+    public String cancelOrder(@PathVariable Long id) {
+
+        return "Order " + id + " cancelled successfully";
     }
 }
