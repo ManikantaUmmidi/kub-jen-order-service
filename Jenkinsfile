@@ -239,23 +239,11 @@ pipeline {
     post {
 
         success {
-
-            echo """
-            CI/CD SUCCESS
-
-            Branch : ${BRANCH_NAME}
-            Image  : ${DOCKER_IMAGE}:${IMAGE_TAG}
-            """
+            echo "CI/CD pipeline SUCCESS - Branch: ${env.BRANCH_NAME}, Image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
         }
 
         failure {
-
-            echo """
-            CI/CD FAILED
-
-            Branch : ${BRANCH_NAME}
-            Image  : ${DOCKER_IMAGE}:${IMAGE_TAG}
-            """
+            echo "CI/CD pipeline FAILED - Branch: ${env.BRANCH_NAME}, Image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
         }
     }
 }
