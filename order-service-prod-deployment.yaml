@@ -27,7 +27,7 @@ spec:
       containers:
         - name: order-service
 
-          image: umanikanta/order-service:production-1
+          image: umanikanta/order-service:release-3
 
           ports:
             - containerPort: 8080
