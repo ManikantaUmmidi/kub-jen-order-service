@@ -2,26 +2,40 @@ pipeline {
 
     agent any
 
+    /*
+     * Common environment variables
+     *
+     * IMAGE_TAG is intentionally NOT declared here.
+     * It is calculated dynamically in the Initialize stage.
+     */
     environment {
 
         DOCKER_IMAGE = "umanikanta/order-service"
-
-        // Tag will be calculated based on branch
-        IMAGE_TAG = ""
-
     }
 
     stages {
+
+        // ============================================================
+        // 1. CHECKOUT
+        // ============================================================
 
         stage('Checkout') {
 
             steps {
 
-                echo "Checking out branch: ${BRANCH_NAME}"
+                echo "========================================"
+                echo "Checking out source code"
+                echo "Branch: ${env.BRANCH_NAME}"
+                echo "========================================"
 
                 checkout scm
             }
         }
+
+
+        // ============================================================
+        // 2. INITIALIZE
+        // ============================================================
 
         stage('Initialize') {
 
@@ -29,100 +43,223 @@ pipeline {
 
                 script {
 
+                    /*
+                     * Generate Docker image tag based on branch.
+                     *
+                     * feature/cancel-order
+                     *      ->
+                     * feature-10
+                     *
+                     * develop
+                     *      ->
+                     * develop-20
+                     *
+                     * main
+                     *      ->
+                     * release-30
+                     */
+
                     if (env.BRANCH_NAME.startsWith('feature/')) {
 
-                        env.IMAGE_TAG = "feature-${BUILD_NUMBER}"
+                        env.IMAGE_TAG =
+                            "feature-${env.BUILD_NUMBER}"
 
-                    } else if (env.BRANCH_NAME == 'develop') {
-
-                        env.IMAGE_TAG = "develop-${BUILD_NUMBER}"
-
-                    } else if (env.BRANCH_NAME == 'main') {
-
-                        env.IMAGE_TAG = "release-${BUILD_NUMBER}"
-
-                    } else {
-
-                        error "Unsupported branch: ${env.BRANCH_NAME}"
                     }
 
+                    else if (env.BRANCH_NAME == 'develop') {
+
+                        env.IMAGE_TAG =
+                            "develop-${env.BUILD_NUMBER}"
+
+                    }
+
+                    else if (env.BRANCH_NAME == 'main') {
+
+                        env.IMAGE_TAG =
+                            "release-${env.BUILD_NUMBER}"
+
+                    }
+
+                    else {
+
+                        error """
+                        Unsupported branch: ${env.BRANCH_NAME}
+
+                        Supported branches:
+                        - feature/*
+                        - develop
+                        - main
+                        """
+                    }
+
+
+                    echo ""
+                    echo "========================================"
+                    echo "PIPELINE INITIALIZATION"
+                    echo "========================================"
                     echo "Branch     : ${env.BRANCH_NAME}"
+                    echo "Build      : ${env.BUILD_NUMBER}"
                     echo "Image      : ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
+                    echo "========================================"
+                    echo ""
                 }
             }
         }
+
+
+        // ============================================================
+        // 3. BUILD
+        // ============================================================
 
         stage('Build') {
 
             steps {
 
-                echo 'Building application'
+                echo "========================================"
+                echo "Building Spring Boot application"
+                echo "========================================"
 
                 sh 'mvn clean package -DskipTests'
             }
         }
 
+
+        // ============================================================
+        // 4. UNIT TESTS
+        // ============================================================
+
         stage('Unit Tests') {
 
             steps {
 
-                echo 'Running unit tests'
+                echo "========================================"
+                echo "Running unit tests"
+                echo "========================================"
 
                 sh 'mvn test'
             }
         }
 
+
+        // ============================================================
+        // 5. CODE QUALITY
+        // ============================================================
+
         stage('Code Quality') {
 
             steps {
 
-                echo 'Running code quality analysis'
+                echo "========================================"
+                echo "Running code quality analysis"
+                echo "========================================"
 
-                // SonarQube command goes here
+                /*
+                 * SonarQube command can be added here later.
+                 *
+                 * Example:
+                 *
+                 * sh 'mvn sonar:sonar'
+                 */
             }
         }
+
+
+        // ============================================================
+        // 6. DOCKER BUILD
+        // ============================================================
 
         stage('Docker Build') {
 
             steps {
 
-                echo "Building Docker image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
+                echo "========================================"
+                echo "Building Docker image"
+                echo "========================================"
+
+                echo "Image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
 
                 sh """
                     docker build \
-                    -t ${DOCKER_IMAGE}:${IMAGE_TAG} .
+                    -t ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} .
                 """
             }
         }
+
+
+        // ============================================================
+        // 7. SECURITY SCAN
+        // ============================================================
 
         stage('Security Scan') {
 
             steps {
 
-                echo "Scanning Docker image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
+                echo "========================================"
+                echo "Running security scan"
+                echo "========================================"
 
-                // Example:
-                // sh "trivy image ${DOCKER_IMAGE}:${IMAGE_TAG}"
+                echo "Scanning:"
+                echo "${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
+
+                /*
+                 * Trivy can be added later.
+                 *
+                 * Example:
+                 *
+                 * sh "trivy image ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
+                 */
             }
         }
+
+
+        // ============================================================
+        // 8. DOCKER PUSH
+        // ============================================================
+
+        /*
+         * FEATURE BRANCH:
+         *
+         * Docker image is built but NOT pushed.
+         *
+         * DEVELOP:
+         *
+         * Docker image is pushed.
+         *
+         * MAIN:
+         *
+         * Docker image is pushed.
+         */
 
         stage('Docker Push') {
 
             when {
+
                 anyOf {
+
                     branch 'develop'
+
                     branch 'main'
                 }
             }
 
             steps {
 
-                echo "Publishing Docker image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
+                echo "========================================"
+                echo "Publishing Docker image"
+                echo "========================================"
+
+                echo "Image:"
+                echo "${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
+
 
                 withCredentials([
+
                     usernamePassword(
+
                         credentialsId: 'dockerhub-credentials',
+
                         usernameVariable: 'DOCKER_USERNAME',
+
                         passwordVariable: 'DOCKER_PASSWORD'
                     )
                 ]) {
@@ -140,122 +277,257 @@ pipeline {
             }
         }
 
+
+        // ============================================================
+        // 9. DEPLOY TO DEVELOPMENT
+        // ============================================================
+
+        /*
+         * Only develop branch reaches this stage.
+         */
+
         stage('Deploy to DEV') {
 
             when {
+
                 branch 'develop'
             }
 
             steps {
 
-                echo "Deploying ${DOCKER_IMAGE}:${IMAGE_TAG} to DEV"
+                echo "========================================"
+                echo "DEPLOYING TO DEVELOPMENT"
+                echo "========================================"
+
+                echo "Image:"
+                echo "${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
+
 
                 sh """
-                    kubectl -n development set image deployment/order-service \
-                        order-service=${DOCKER_IMAGE}:${IMAGE_TAG}
+
+                    kubectl -n development set image \
+                        deployment/order-service \
+                        order-service=${env.DOCKER_IMAGE}:${env.IMAGE_TAG}
+
                 """
 
+
+                echo "Waiting for DEV rollout..."
+
+
                 sh """
+
                     kubectl -n development rollout status \
                         deployment/order-service \
                         --timeout=120s
+
                 """
             }
         }
+
+
+        // ============================================================
+        // 10. DEV SMOKE TEST
+        // ============================================================
 
         stage('DEV Smoke Test') {
 
             when {
+
                 branch 'develop'
             }
 
             steps {
 
-                echo 'Running DEV smoke test'
+                echo "========================================"
+                echo "RUNNING DEV SMOKE TEST"
+                echo "========================================"
+
 
                 sh '''
+
+                    echo "Pods:"
                     kubectl get pods -n development
+
+                    echo ""
+
+                    echo "Services:"
                     kubectl get svc -n development
+
+                    echo ""
+
+                    echo "Deployment:"
+                    kubectl get deployment order-service \
+                        -n development
+
                 '''
             }
         }
 
+
+        // ============================================================
+        // 11. PRODUCTION APPROVAL
+        // ============================================================
+
+        /*
+         * Only main branch reaches this stage.
+         *
+         * Jenkins pauses here and waits for manual approval.
+         */
+
         stage('Production Approval') {
 
             when {
+
                 branch 'main'
             }
 
             steps {
 
+                echo "========================================"
+                echo "PRODUCTION DEPLOYMENT APPROVAL"
+                echo "========================================"
+
                 input(
-                    message: "Deploy ${DOCKER_IMAGE}:${IMAGE_TAG} to PRODUCTION?",
-                    ok: 'Deploy to Production'
+
+                    message:
+                        "Deploy ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} to PRODUCTION?",
+
+                    ok:
+                        'Deploy to Production'
                 )
             }
         }
 
+
+        // ============================================================
+        // 12. DEPLOY TO PRODUCTION
+        // ============================================================
+
+        /*
+         * Only main branch reaches this stage.
+         */
+
         stage('Deploy to PROD') {
 
             when {
+
                 branch 'main'
             }
 
             steps {
 
-                echo "Deploying ${DOCKER_IMAGE}:${IMAGE_TAG} to PRODUCTION"
+                echo "========================================"
+                echo "DEPLOYING TO PRODUCTION"
+                echo "========================================"
+
+                echo "Image:"
+                echo "${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
+
 
                 sh """
-                    kubectl -n production set image deployment/order-service \
-                        order-service=${DOCKER_IMAGE}:${IMAGE_TAG}
+
+                    kubectl -n production set image \
+                        deployment/order-service \
+                        order-service=${env.DOCKER_IMAGE}:${env.IMAGE_TAG}
+
                 """
 
+
+                echo "Waiting for production rollout..."
+
+
                 sh """
+
                     kubectl -n production rollout status \
                         deployment/order-service \
                         --timeout=180s
+
                 """
             }
         }
 
+
+        // ============================================================
+        // 13. PRODUCTION SMOKE TEST
+        // ============================================================
+
         stage('Production Smoke Test') {
 
             when {
+
                 branch 'main'
             }
 
             steps {
 
-                echo 'Running production smoke test'
+                echo "========================================"
+                echo "RUNNING PRODUCTION SMOKE TEST"
+                echo "========================================"
+
 
                 sh '''
+
+                    echo "Pods:"
                     kubectl get pods -n production
+
+                    echo ""
+
+                    echo "Services:"
                     kubectl get svc -n production
+
+                    echo ""
+
+                    echo "Deployment:"
+                    kubectl get deployment order-service \
+                        -n production
+
                 '''
             }
         }
     }
 
+
+    // ================================================================
+    // POST ACTIONS
+    // ================================================================
+
     post {
 
         success {
 
-            echo """
-            CI/CD SUCCESS
-
-            Branch : ${BRANCH_NAME}
-            Image  : ${DOCKER_IMAGE}:${IMAGE_TAG}
-            """
+            echo ""
+            echo "========================================"
+            echo "CI/CD PIPELINE SUCCESS"
+            echo "========================================"
+            echo "Branch : ${env.BRANCH_NAME}"
+            echo "Build  : ${env.BUILD_NUMBER}"
+            echo "Image  : ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
+            echo "========================================"
+            echo ""
         }
+
 
         failure {
 
-            echo """
-            CI/CD FAILED
+            echo ""
+            echo "========================================"
+            echo "CI/CD PIPELINE FAILED"
+            echo "========================================"
+            echo "Branch : ${env.BRANCH_NAME}"
+            echo "Build  : ${env.BUILD_NUMBER}"
+            echo "Image  : ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
+            echo "========================================"
+            echo ""
+        }
 
-            Branch : ${BRANCH_NAME}
-            Image  : ${DOCKER_IMAGE}:${IMAGE_TAG}
-            """
+
+        always {
+
+            echo ""
+            echo "Pipeline execution completed."
+            echo "Branch: ${env.BRANCH_NAME}"
+            echo ""
         }
     }
 }
